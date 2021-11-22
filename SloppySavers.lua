@@ -2,6 +2,7 @@
 -- addonName, addonTable = ...
 -- addonName, SloppyPlus = ...
 SloppyPlus = LibStub("AceAddon-3.0"):NewAddon("SloppyPlus", "AceConsole-3.0") -- , "AceEvent-3.0")
+SloppyPlus.modules = {}
 
 
 SloppyPlus.sessionInfo = {
@@ -56,16 +57,18 @@ options.args.general.args.cvar_support.args = {
 function SloppyPlus:Initialize()
 	if self.defaults then return end
 	self.defaults = {
-		reagent_alert = false,
+		use_reagent_alert = false,
 
 		cvars = {
 			-- Main CVAR enable/disable feature.
 			enable_cvar_overrides = true,
+			-------------------
 			-- Child CVAR Settings.
 			allow_nameplated = true,
-			nameplate_max_distance = 41,
-			hide_console_errors = false,
 			-- SetCVar("nameplateMaxDistance", 41)
+			nameplate_max_distance = 41,
+			-- SetCVar("scriptErrors", 0)
+			hide_console_errors = false,
 		},
 	}
 	-- Keep our own internal "Class" table, Don't trust Blizzard API.
@@ -87,10 +90,10 @@ function SloppyPlus:Initialize()
 			name = "Enable Reagent Alert",
 			set = function(info, value)
 				print(info, value)
-				self.defaults.reagent_alert = value
+				self.defaults.use_reagent_alert = value
 			end,
 			get = function(...)
-				return self.defaults.reagent_alert
+				return self.defaults.use_reagent_alert
 			end,
 		}
 	}
@@ -157,62 +160,27 @@ function SloppyPlus:Initialize()
 	-- self.db.RegisterCallback(self, "OnProfileChanged", "ProfilesChanged")
 	-- self.db.RegisterCallback(self, "OnProfileCopied", "ProfilesChanged")
 	-- self.db.RegisterCallback(self, "OnProfileReset", "ProfileReset")
+	for _, module in pairs(self.modules) do
+		module:Initialize()
+		-- Give every submodule a reference to important data.
+		module.defaults = self.defaults
+		module.sessionInfo = self.sessionInfo
+		module.classTable = self.classTable
+	end
 end
 
-function SloppyPlus:GetMessage(info)
-	print('get message: ', info)
-end
-
-function SloppyPlus:SetMessage(info, values)
-	print('set message: ', info, values)
-end
-
-
-
-function SloppyPlus:DetectPlayer()
+function SloppyPlus:PreInitialize()
 	self.sessionInfo.playerClassIndex = select(3, UnitClass("player"))
 	self.sessionInfo.playerLevel = UnitLevel("player")
 	self.sessionInfo.playerFaction =  UnitFactionGroup("player") -- "Alliance" or "Horde"
+end
 
-	self.required_reagents = {
-		["ROGUE"] = {
-			["Flash Powder"] = {
-				["minimum_count"] = 50,
-			},
-			["Wound Poison V"] = {
-				["minimum_count"] = 10,
-			},
-			["Crippling Poison II"] = {
-				["minimum_count"] = 10,
-			},
-			["Mind-numbing Poison III"] = {
-				["minimum_count"] = 0,
-			},
-			-- Common Items
-			["Greater Rune of Warding"] = {},
-		},
-		["WARLOCK"] = {
-			["Soul Shard"] = {},
-			-- Common Items
-			["Greater Rune of Warding"] = {},
-			["Star's Tears"] = {
-				["minimum_count"] = 50,
-			},
-		},
-		["PRIEST"] = {
-			-- Priest Candles and shit
-			-- Common Items.
-			["Greater Rune of Warding"] = {},
-			["Star's Tears"] = {
-				["minimum_count"] = 10,
-			},
-		}
-	}
-	for k, _ in pairs(self.required_reagents) do
-		self.required_reagents[k]['Heavy Netherweave Bandage'] = {
-			["minimum_count"] = 50,
-		}
-	end
+function SloppyPlus:RegisterModule(module, key, localized_name)
+	-- Every submodule must call RegisterModule to hook into framework.
+	if self.modules[key] then return end
+	self.modules[key] = module
+	self.modules[key].key = key
+	self.modules[key].localizedName = localized_name
 end
 
 function SloppyPlus:ZoneInfo()
@@ -233,101 +201,21 @@ function SloppyPlus:EnteringWorldTasks()
 end
 
 
-function SloppyPlus:HandleIcon(item_name, values, index)
-	if not values or not values.minimum_count then return end
-	local count = GetItemCount(item_name, false, false, false)
-	if count >= values.minimum_count then return end
-	local itemTexture = select(10, GetItemInfo(item_name))
-	if not itemTexture then return end
-	if not self.primary_frame.textures[index] then
-		local texture = self.primary_frame:CreateTexture("reminder"..index)
-		texture:Hide()
-		if index == 1 then -- This is the first icon
-			texture:SetPoint("CENTER")
-		else
-			texture:SetPoint("LEFT", self.primary_frame.textures[index-1], "RIGHT")
-		end
-		self.primary_frame.textures[index] = texture
-		texture:SetTexture(itemTexture)
-	else
-		local texture = self.primary_frame.textures[index]
-		texture:Hide()
-		texture:SetTexture(itemTexture)
-	end
-	return true
-end
-
-function SloppyPlus:ReagentAlerts(event, ...)
-	if not self.sessionInfo.login_time then return end
-	 -- Is it too soon since login to check bags?
-	local now_t = GetTime()
-	if now_t - 30 < self.sessionInfo.login_time then return end
-	if not self.sessionInfo.playerClassIndex then return end
-	if not self.classTable[self.sessionInfo.playerClassIndex] then return end
-
-	local classFile = self.classTable[self.sessionInfo.playerClassIndex].classFile
-	if not self.required_reagents[classFile] then return end
-
-	print('Login_t', self.sessionInfo.login_time, 'now_t: ', now_t, now_t - 30)
-
-	self.primary_frame:Hide()
-	if not self.defaults.reagent_alert then return false end
-
-	local index = 0
-	for item_name, values in pairs(self.required_reagents[classFile]) do
-		if self:HandleIcon(item_name, values, index + 1) then
-			index = index + 1
-		end
-	end
-	if index == 0 then return end
-	local xoff = 0
-	local width = 40 -- self.primary_frame.textures[1]:GetWidth()
-	if math.fmod(index, 2) == 0 and index > 1 then
-		local adjustment = -1
-		if index == 2 then
-			adjustment = 0
-		end
-		-- Even number of icons
-		xoff = adjustment * (width * (index / 2 - 1)) - (width / 2)
-	else
-		-- Odd number of icons
-		xoff = -1 * (width * ((index + 1) / 2 - 1))
-	end
-	print("offsets: ", index, width, xoff)
-	local height = 40 -- self.primary_frame.textures[1]:GetHeight()
-	self.primary_frame:SetSize(width * index, height)
-	self.primary_frame:SetPoint("CENTER", xoff - 10, 150)
-	self.primary_frame:Show()
-	for idx = 1, index do
-		self.primary_frame.textures[idx]:Show()
-	end
-	C_Timer.After(5, function()
-		self.primary_frame:Hide()
-		for k, v in pairs(self.primary_frame.textures) do
-			self.primary_frame.textures[k]:Hide()
-		end
-	end)
-end
-
-
 local primary_frame = CreateFrame("Frame")
+primary_frame:ClearAllPoints()
+primary_frame:Hide()
+
 primary_frame:RegisterEvent("PLAYER_LOGIN")
 primary_frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 primary_frame:SetScript("OnEvent", function(self, event, ...)
-	-- print('Sloppy Plus: ', event, ...)
 	if event == 'PLAYER_LOGIN' then
 		-- We note the time that we logged in.
 		SloppyPlus.sessionInfo.login_time = GetTime()
-
+		SloppyPlus:PreInitialize()
 		SloppyPlus:Initialize()
-		SloppyPlus:DetectPlayer()
 		self:UnregisterEvent("PLAYER_LOGIN")
 	elseif event == 'PLAYER_ENTERING_WORLD' then
 		SloppyPlus:EnteringWorldTasks()
-		SloppyPlus:ReagentAlerts(event, ...)
 	end
 end)
 SloppyPlus.primary_frame = primary_frame
-primary_frame.textures = {}
-primary_frame:ClearAllPoints()
-primary_frame:Hide()
