@@ -6,6 +6,7 @@ exclude_files = {
 	"README.md",
 	"setup.sh",
 	"SloppySavers.toc",
+	"arena_enter_events.txt",
 }
 ignore = {
 	"211", -- Unused local variable
@@ -38,6 +39,8 @@ globals = {
 	"GetInventoryItemLink",
 	"GetNumClasses",
 	"GetTime",
+	"IsInInstance",
+	"RequestRaidInfo",
 	"SetCVar",
 	"UIParent",
 	"UnitClass",

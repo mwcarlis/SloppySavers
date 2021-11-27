@@ -51,13 +51,19 @@ options.args.general.args.cvar_support.args = {
 		inline = true,
 		name = "Nameplate Distance",
 	},
+	console_errors = {
+		order = 3,
+		type = "group",
+		inline = true,
+		name = "Lua Errors",
+	},
 }
 
 
 function SloppyPlus:Initialize()
 	if self.defaults then return end
 	self.defaults = {
-		use_reagent_alert = false,
+		use_reagent_alert = true,
 
 		cvars = {
 			-- Main CVAR enable/disable feature.
@@ -68,7 +74,9 @@ function SloppyPlus:Initialize()
 			-- SetCVar("nameplateMaxDistance", 41)
 			nameplate_max_distance = 41,
 			-- SetCVar("scriptErrors", 0)
-			hide_console_errors = false,
+			console_error_control = false,
+			console_error_zones = "Disabled",
+
 		},
 	}
 	-- Keep our own internal "Class" table, Don't trust Blizzard API.
@@ -102,7 +110,7 @@ function SloppyPlus:Initialize()
 		order = 1,
 		type = "toggle",
 		name = "Enable CVAR Overriding",
-		desc = "Enable/Disable the feature controls in this menu.",
+		desc = "Enable/Disable the feature controls in this menu",
 		set = function(info, value)
 			self.defaults.cvars.enable_cvar_overrides = value
 		end,
@@ -139,18 +147,39 @@ function SloppyPlus:Initialize()
 			end,
 		}
 	}
-	options.args.general.args.cvar_support.args.console_errors = {
+	options.args.general.args.cvar_support.args.console_errors.args = {
 		-- scriptErrors
-		order = 3,
-		type = "toggle",
-		name = "Hide Lua Errors",
-		set = function(info, value)
-			self.defaults.cvars.hide_console_errors = value
-		end,
-		get = function(...)
-			if not self.defaults.cvars.enable_cvar_overrides then return false end
-			return self.defaults.cvars.hide_console_errors
-		end,
+		allow_errors = {
+			order = 1,
+			type = "toggle",
+			name = "Error Control",
+			desc = "Enable/Disable LUA Error Controls",
+			set = function(info, value)
+				self.defaults.cvars.console_error_control = value
+			end,
+			get = function(...)
+				if not self.defaults.cvars.enable_cvar_overrides then return false end
+				return self.defaults.cvars.console_error_control
+			end,
+		},
+		error_controls = {
+			order = 2,
+			type = "select",
+			values = {["disable_arena"] = "Disable in Arena", ["disable_always"] = "Disable Always", ["enable_always"] = "Enable Always"},
+			name = "LUA Error Configuration",
+			set = function(info, value)
+				if not self.defaults.cvars.enable_cvar_overrides or not self.defaults.cvars.console_error_control then
+					return
+				end
+				self.defaults.cvars.console_error_zones = value
+			end,
+			get = function(...)
+				if not self.defaults.cvars.enable_cvar_overrides or not self.defaults.cvars.console_error_control then
+					return ""
+				end
+				return self.defaults.cvars.console_error_zones
+			end,
+		},
 	}
 
 	-- Initialize DB
@@ -183,8 +212,24 @@ function SloppyPlus:RegisterModule(module, key, localized_name)
 	self.modules[key].localizedName = localized_name
 end
 
+--[[
+On PLAYER_ENTERING_WORLD check
+IsInInstance()
+
+If so run:
+RequestRaidInfo()
+
+then wait for the event:
+UPDATE_INSTANCE_INFO
+
+Then call:
+GetInstanceInfo()
+]]--
+
 function SloppyPlus:ZoneInfo()
--- local isArena, isRegistered = IsActiveBattlefieldArena()
+	-- local isArena, isRegistered = IsActiveBattlefieldArena()
+	-- local instanceType = select(2, GetInstanceInfo())
+	local instanceType = select(2, IsInInstance())
 end
 
 function SloppyPlus:EnteringWorldTasks()
@@ -192,11 +237,9 @@ function SloppyPlus:EnteringWorldTasks()
 		if self.defaults.cvars.allow_nameplated then
 			SetCVar("nameplateMaxDistance", self.defaults.cvars.nameplate_max_distance)
 		end
-		if self.defaults.cvars.hide_console_errors then
-			SetCVar("scriptErrors", 0)
-		else
-			SetCVar("scriptErrors", 1)
-		end
+		-- if self.defaults.cvars.console_error_control then
+		-- 	   SetCVar("scriptErrors", 0)
+		-- end
 	end
 end
 
@@ -207,6 +250,7 @@ primary_frame:Hide()
 
 primary_frame:RegisterEvent("PLAYER_LOGIN")
 primary_frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+primary_frame:RegisterEvent("UPDATE_INSTANCE_INFO")
 primary_frame:SetScript("OnEvent", function(self, event, ...)
 	if event == 'PLAYER_LOGIN' then
 		-- We note the time that we logged in.
@@ -215,7 +259,14 @@ primary_frame:SetScript("OnEvent", function(self, event, ...)
 		SloppyPlus:Initialize()
 		self:UnregisterEvent("PLAYER_LOGIN")
 	elseif event == 'PLAYER_ENTERING_WORLD' then
+		RequestRaidInfo()
 		SloppyPlus:EnteringWorldTasks()
+	elseif event == 'UPDATE_INSTANCE_INFO' then
+		SloppyPlus:ZoneInfo()
 	end
 end)
 SloppyPlus.primary_frame = primary_frame
+
+
+-- primary_frame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+-- primary_frame:RegisterEvent("PLAYER_ENTERING_BATTLEGROUND")
