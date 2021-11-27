@@ -15,6 +15,9 @@ set -x
 
 cp SloppySavers.lua /media/sf__classic_/Interface/AddOns/SloppySavers
 cp SloppySavers.toc /media/sf__classic_/Interface/AddOns/SloppySavers
+
+cp options/Options.lua /media/sf__classic_/Interface/AddOns/SloppySavers/options
+
 cp modules/TooltipScanner.lua /media/sf__classic_/Interface/AddOns/SloppySavers/modules
 cp modules/Icons.lua /media/sf__classic_/Interface/AddOns/SloppySavers/modules
 cp modules/ItemAlerts.lua /media/sf__classic_/Interface/AddOns/SloppySavers/modules

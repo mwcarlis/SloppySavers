@@ -70,25 +70,29 @@ function ItemAlerts:Initialize()
 		}
 		-- TODO: We probably don't even need to load this.
 		-- I bet we can detect the power type when we load.
-		if powerType ~= nil and powerType == Enum.PowerType.Mana then
+		if powerType == Enum.PowerType.Mana then
 			-- It is only applicable for mana users.
 			self.item_alerts[classFile]["Star's Tears"] = {
 					["minimum_count"] = 50,
 			}
 		end
 	end
-	-- If you didn't define a "count" handler assume that this is an inventory item
-	-- & we will be able to use GetItemCount.
+	-- This is kind of a clean up & a generalization.
+	-- We assume if you specified a minimum_count, but not a count method
+	-- then you should use GetItemCount.
 	for classFile, values in pairs(self.item_alerts) do
 		for item_name, item_values in pairs(values) do
-			if not item_values.count then
+			if not item_values.minimum_count then
+				item_values.count = function() return nil end
+			elseif not item_values.count then
 				-- By Default we assume this is Inventory based.
 				item_values.count = function()
 					return GetItemCount(item_name, false, false, false)
 				end
 			end
-			if not item_values.duration then
+			if not item_values.duration or not item_values.minimum_duration then
 				item_values.duration = function() return nil end
+				item_values.minimum_duration = nil
 			end
 		end
 	end
@@ -159,9 +163,7 @@ function ItemAlerts:HandleIcon(item_name, values, index)
 		if duration >= values.minimum_duration then return end
 	elseif use_count then
 		if count >= values.minimum_count then return end
-	else
-		return false
-	end
+	else return end
 
 	local itemTexture = ItemAlerts:GetIcon(item_name)
 	if not itemTexture then return end
@@ -172,6 +174,7 @@ function ItemAlerts:HandleIcon(item_name, values, index)
 		texture.count_text:Show()
 	end
 	if use_duration and duration < values.minimum_duration then
+		-- TODO: Round to Hour/Minute/Seconds.
 		texture.duration_text:SetText(tostring(duration).." s")
 		texture.duration_text:Show()
 	end
@@ -201,7 +204,7 @@ function ItemAlerts:ReagentAlerts()
 
 	local xoff = 0 -- (-1 * ((index * width) / 2)) - (index * 5)
 	self.icon_frame:SetSize(width * index, height)
-	print("offsets: ", index, width, xoff, self.icon_frame:GetWidth())
+	-- print("offsets: ", index, width, xoff, self.icon_frame:GetWidth())
 	self.icon_frame:SetPoint("RIGHT", "UIParent", "CENTER", xoff, 50)
 	self.icon_frame:Show()
 	for idx = 1, index do
